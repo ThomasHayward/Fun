@@ -72,7 +72,7 @@ export const STORE_PRESETS = {
   meijer: {
     label: 'Meijer',
     match: /meijer/i,
-    zones: ['Produce', 'Bakery', 'Deli', 'Meat', 'Aisle', 'Dairy', 'Frozen', 'Pharmacy'],
+    zones: ['Produce', 'Bakery', 'Deli', 'Meat', ...LETTER_ZONES, 'Aisle', 'Dairy', 'Frozen', 'Pharmacy'],
     lookup: siteSearch('meijer.com'),
   },
   walmart: {
@@ -104,11 +104,16 @@ export function newStore(name: string, presetKey?: PresetKey): Store {
 
 export const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
-// "14" -> "Aisle 14", "g12" -> "G12", "produce" -> "Produce"
+// Normalizes a typed location. An optional trailing number is the section within the aisle:
+// "g12" -> "G12", "g13 47" / "G13-47" / "G13 sec 47" -> "G13-47", "14" -> "Aisle 14", "14-3" -> "Aisle 14-3",
+// "produce" -> "Produce"
 export function formatLoc(s: string): string {
   const t = s.trim().replace(/\s+/g, ' ');
-  if (/^\d+[a-z]?$/i.test(t)) return `Aisle ${t.toUpperCase()}`;
-  if (/^[a-z]{1,2}\s?\d+$/i.test(t)) return t.replace(/\s/, '').toUpperCase();
+  const withSection = (aisle: string, section?: string) => (section ? `${aisle}-${Number(section)}` : aisle);
+  const code = t.match(/^([a-z]{1,2}) ?(\d+)(?:(?: ?[-/,.] ?| )(?:sec(?:tion)?\.? ?)?(\d+))?$/i);
+  if (code) return withSection(`${code[1].toUpperCase()}${Number(code[2])}`, code[3]);
+  const numbered = t.match(/^(\d+[a-z]?)(?:(?: ?- ?| )(\d+))?$/i);
+  if (numbered) return withSection(`Aisle ${numbered[1].toUpperCase()}`, numbered[2]);
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -126,8 +131,12 @@ function blank(): Db {
 }
 
 // Fixes up data saved by older versions of the app.
+const OLD_MEIJER_ZONES = ['Produce', 'Bakery', 'Deli', 'Meat', 'Aisle', 'Dairy', 'Frozen', 'Pharmacy'].join('|');
+
 function migrate(db: Db): Db {
   for (const s of db.stores) {
+    // Meijer aisles are lettered (G13) too; upgrade an untouched old preset.
+    if (s.zones.join('|') === OLD_MEIJER_ZONES) s.zones = [...STORE_PRESETS.meijer.zones];
     // meijer.com's own search link didn't work; use a site search instead.
     if (s.lookup === 'https://www.meijer.com/shopping/search.html?text={q}') s.lookup = STORE_PRESETS.meijer.lookup;
   }

@@ -4,6 +4,8 @@
 // letters "A", "B", ... or named sections like "Produce"). An item's location
 // ("G12", "Produce", "Aisle 4") is matched to the longest zone it starts with,
 // then items are ordered by zone position and the aisle number inside it.
+// A location can also name a section within the aisle ("G13-47"): items share
+// one stop per aisle and are ordered by section inside it.
 
 interface LocationKey {
   zone: number;
@@ -12,9 +14,17 @@ interface LocationKey {
 }
 
 export interface Stop<T> {
-  location: string; // '' when unknown
+  location: string; // the aisle, without section; '' when unknown
   key: LocationKey | null;
   items: T[];
+}
+
+const SECTION = /^(.*\d)\s*-\s*(\d+)$/;
+
+// "G13-47" -> { aisle: "G13", section: 47 }; "Produce" -> { aisle: "Produce", section: null }
+export function splitLoc(loc: string): { aisle: string; section: number | null } {
+  const m = loc.trim().match(SECTION);
+  return m ? { aisle: m[1].trim(), section: Number(m[2]) } : { aisle: loc.trim(), section: null };
 }
 
 function matchZone(loc: string, zones: string[]) {
@@ -55,16 +65,20 @@ function compareKeys(a: LocationKey, b: LocationKey): number {
  */
 export function planRoute<T>(items: T[], locate: (item: T) => string, zones: string[]): Stop<T>[] {
   const stops = new Map<string, Stop<T>>();
+  const sections = new Map<T, number>();
   for (const item of items) {
-    const loc = (locate(item) || '').trim();
-    const id = loc.toUpperCase();
+    const { aisle, section } = splitLoc(locate(item) || '');
+    const id = aisle.toUpperCase();
     let stop = stops.get(id);
     if (!stop) {
-      stop = { location: loc, key: locationKey(loc, zones), items: [] };
+      stop = { location: aisle, key: locationKey(aisle, zones), items: [] };
       stops.set(id, stop);
     }
     stop.items.push(item);
+    sections.set(item, section ?? Number.MAX_SAFE_INTEGER); // no section: end of the aisle
   }
+  // Within an aisle, walk the sections in order. Sort is stable, so ties keep the order they were added.
+  for (const stop of stops.values()) stop.items.sort((a, b) => (sections.get(a) ?? 0) - (sections.get(b) ?? 0));
   return [...stops.values()].sort((a, b) => {
     if (!a.key) return 1;
     if (!b.key) return -1;

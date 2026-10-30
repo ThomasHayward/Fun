@@ -2,7 +2,7 @@ import {
   load, save, uid, normName, formatLoc, newStore, isPresetKey, STORE_PRESETS, exportBackup, importBackup, wipe,
   type GroceryList, type Item, type Note, type Reminder, type Repeat, type Store,
 } from './data.js';
-import { planRoute } from './route.js';
+import { planRoute, splitLoc } from './route.js';
 
 let db = load();
 const $app = document.getElementById('app') as HTMLElement;
@@ -41,6 +41,11 @@ const storeOf = (list: GroceryList): Store => byId(db.stores, list.storeId) ?? d
 // The store an item is bought at: its own pick, else the list's main store.
 const itemStore = (list: GroceryList, item: Item): Store => byId(db.stores, item.at) ?? storeOf(list);
 const locOf = (storeId: string, name: string) => db.locations[storeId]?.[normName(name)] ?? '';
+// "G13-47" -> "G13 · 47"
+const showLoc = (loc: string) => {
+  const { aisle, section } = splitLoc(loc);
+  return section === null ? aisle : `${aisle} · ${section}`;
+};
 
 function setLoc(storeId: string, name: string, loc: string) {
   const locs = (db.locations[storeId] ??= {});
@@ -74,7 +79,7 @@ function itemRow(item: Item, store: Store) {
   const loc = locOf(store.id, item.name);
   const others = db.stores
     .filter((s) => s.id !== store.id && locOf(s.id, item.name))
-    .map((s) => `${esc(s.name)} ${esc(locOf(s.id, item.name))}`);
+    .map((s) => `${esc(s.name)} ${esc(showLoc(locOf(s.id, item.name)))}`);
   const picker = db.stores.length > 1
     ? `<select class="at" data-action="item-at" data-id="${item.id}" title="Store to buy at">${db.stores.map((s) =>
       `<option value="${s.id}" ${s.id === store.id ? 'selected' : ''}>@ ${esc(s.name)}</option>`).join('')}</select>`
@@ -83,7 +88,7 @@ function itemRow(item: Item, store: Store) {
     <label class="check"><input type="checkbox" data-action="toggle-item" data-id="${item.id}" ${item.checked ? 'checked' : ''}><span></span></label>
     <span class="name"><span data-action="edit-item" data-id="${item.id}">${esc(item.name)}${item.qty ? ` <span class="muted">× ${esc(item.qty)}</span>` : ''}</span>
       <span class="sub">${picker}${others.length ? `<span class="muted small">${others.join(' · ')}</span>` : ''}</span></span>
-    <button class="loc ${loc ? '' : 'empty'}" data-action="set-loc" data-id="${item.id}" title="Set aisle at ${esc(store.name)}">${loc ? esc(loc) : '+ aisle'}</button>
+    <button class="loc ${loc ? '' : 'empty'}" data-action="set-loc" data-id="${item.id}" title="Set aisle at ${esc(store.name)}">${loc ? esc(showLoc(loc)) : '+ aisle'}</button>
     <a class="icon-btn" href="${esc(lookupUrl(store, item.name))}" target="_blank" rel="noopener" title="Look up at ${esc(store.name)}">🔎</a>
     <button class="icon-btn" data-action="del-item" data-id="${item.id}" title="Remove">✕</button>
   </li>`;
@@ -150,8 +155,9 @@ function viewStore(store: Store) {
       <label>Name <input name="name" value="${esc(store.name)}" required></label>
       <label>Walking order — one zone per line, in the order you walk the store
         <textarea name="zones" rows="10">${esc(store.zones.join('\n'))}</textarea></label>
-      <p class="muted small">Target and Walmart aisles are a letter + number (e.g. <b>G12</b>): list the letters in the order you walk past them.
-        Meijer uses numbered aisles: type just the number (e.g. <b>14</b>) and it files under the “Aisle” line.
+      <p class="muted small">Aisles like <b>G12</b> are a letter + number: list the letters in the order you walk past them.
+        If the store also shows a section within the aisle, add it after the aisle (e.g. <b>G13 47</b>), and items in that aisle are ordered by section.
+        Plain numbered aisles (e.g. <b>14</b>) file under the “Aisle” line.
         Add named spots like “Produce” or “Checkout” anywhere. Within a zone, items are ordered by number.</p>
       <label>Item lookup link (<code>{q}</code> = item name)
         <input name="lookup" value="${esc(store.lookup)}" placeholder="https://www.target.com/s?searchTerm={q}"></label>
@@ -163,7 +169,7 @@ function viewStore(store: Store) {
     </form>
     <h2>Remembered aisles (${known.length})</h2>
     ${known.length ? `<ul class="items">${known.map(([name, loc]) => `<li class="item">
-        <span class="name">${esc(name)}</span><span class="loc">${esc(loc)}</span>
+        <span class="name">${esc(name)}</span><span class="loc">${esc(showLoc(loc))}</span>
         <button class="icon-btn" data-action="forget-loc" data-store="${store.id}" data-name="${esc(name)}">✕</button></li>`).join('')}</ul>`
       : '<p class="muted">None yet — they fill in as you shop.</p>'}`;
 }
@@ -393,7 +399,7 @@ const actions: Record<string, Action> = {
     const list = currentList();
     const item = listItem(list, el.dataset.id);
     const store = itemStore(list, item);
-    const loc = prompt(`Where is “${item.name}” at ${store.name}?\n(e.g. G12, 14, Produce — leave blank to clear)`, locOf(store.id, item.name));
+    const loc = prompt(`Where is “${item.name}” at ${store.name}?\n(e.g. G13, G13 47 for aisle + section, 14, Produce — leave blank to clear)`, locOf(store.id, item.name));
     if (loc === null) return;
     setLoc(store.id, item.name, loc);
     commit();
