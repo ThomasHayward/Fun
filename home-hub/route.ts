@@ -5,7 +5,19 @@
 // ("G12", "Produce", "Aisle 4") is matched to the longest zone it starts with,
 // then items are ordered by zone position and the aisle number inside it.
 
-function matchZone(loc, zones) {
+interface LocationKey {
+  zone: number;
+  num: number;
+  label: string;
+}
+
+export interface Stop<T> {
+  location: string; // '' when unknown
+  key: LocationKey | null;
+  items: T[];
+}
+
+function matchZone(loc: string, zones: string[]) {
   const up = loc.toUpperCase();
   let best = -1;
   let bestLen = 0;
@@ -21,10 +33,10 @@ function matchZone(loc, zones) {
   return { index: best, rest: loc.slice(bestLen) };
 }
 
-export function locationKey(loc, zones) {
+export function locationKey(loc: string, zones: string[]): LocationKey | null {
   if (!loc || !loc.trim()) return null;
   const { index, rest } = matchZone(loc.trim(), zones);
-  const num = parseInt((rest.match(/\d+/) || [])[0], 10);
+  const num = parseInt(rest.match(/\d+/)?.[0] ?? '', 10);
   return {
     zone: index === -1 ? zones.length : index,
     num: Number.isNaN(num) ? -1 : num,
@@ -32,24 +44,26 @@ export function locationKey(loc, zones) {
   };
 }
 
-function compareKeys(a, b) {
+function compareKeys(a: LocationKey, b: LocationKey): number {
   return a.zone - b.zone || a.num - b.num || a.label.localeCompare(b.label, undefined, { numeric: true });
 }
 
 /**
- * Groups items into route stops.
- * @param items  [{ name, ... }]
- * @param locate (item) => location string or ''
+ * Groups items into route stops, in walking order; unknown locations come last (location '').
+ * @param locate returns an item's location string, or '' when unknown
  * @param zones  walking order of zones
- * @returns [{ location, items }] in walking order; unknown locations last (location '').
  */
-export function planRoute(items, locate, zones) {
-  const stops = new Map();
+export function planRoute<T>(items: T[], locate: (item: T) => string, zones: string[]): Stop<T>[] {
+  const stops = new Map<string, Stop<T>>();
   for (const item of items) {
     const loc = (locate(item) || '').trim();
     const id = loc.toUpperCase();
-    if (!stops.has(id)) stops.set(id, { location: loc, key: locationKey(loc, zones), items: [] });
-    stops.get(id).items.push(item);
+    let stop = stops.get(id);
+    if (!stop) {
+      stop = { location: loc, key: locationKey(loc, zones), items: [] };
+      stops.set(id, stop);
+    }
+    stop.items.push(item);
   }
   return [...stops.values()].sort((a, b) => {
     if (!a.key) return 1;
