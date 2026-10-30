@@ -175,3 +175,16 @@ details .btn { margin-top: 8px; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; z-index: 20;
   max-width: 90vw; box-shadow: 0 4px 16px rgba(0,0,0,.2);
 }
+
+/* Item sub-line: store picker + aisles at other stores */
+.item .name { display: flex; flex-direction: column; gap: 2px; cursor: default; }
+.item .name > span:first-child { cursor: pointer; }
+.sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sub:empty { display: none; }
+.at {
+  font-size: 12px; padding: 1px 4px; border-radius: 6px; border-color: transparent;
+  background: var(--accent-soft); color: var(--accent); font-weight: 600; max-width: 140px;
+}
+.trip { margin-top: 18px; }
+.trip h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.trip h2 .btn { margin-left: auto; }

@@ -1,5 +1,5 @@
 // Offline cache: serve app files from cache, refresh in the background.
-const CACHE = 'home-hub-v1';
+const CACHE = 'home-hub-v2';
 const FILES = [
   './', 'index.html', 'styles.css', 'app.js', 'data.js', 'route.js', 'manifest.json',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',

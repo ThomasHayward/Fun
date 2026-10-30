@@ -1,31 +1,61 @@
 // Local storage of all app data, plus backup export/import.
 const KEY = 'homehub.v1';
 
-const TARGET_ZONES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const LETTER_ZONES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+// `match` picks the preset when a new store's name contains it.
 export const STORE_PRESETS = {
   target: {
-    kind: 'target',
-    zones: TARGET_ZONES,
+    label: 'Target',
+    match: /target/i,
+    zones: LETTER_ZONES,
     lookup: 'https://www.target.com/s?searchTerm={q}',
   },
+  meijer: {
+    label: 'Meijer',
+    match: /meijer/i,
+    zones: ['Produce', 'Bakery', 'Deli', 'Meat', 'Aisle', 'Dairy', 'Frozen', 'Pharmacy'],
+    lookup: 'https://www.meijer.com/shopping/search.html?text={q}',
+  },
+  walmart: {
+    label: 'Walmart',
+    match: /walmart/i,
+    zones: LETTER_ZONES,
+    lookup: 'https://www.walmart.com/search?q={q}',
+  },
   custom: {
-    kind: 'custom',
-    zones: ['Produce', 'Bakery', 'Deli', 'Meat', 'Aisle 1', 'Aisle 2', 'Aisle 3', 'Aisle 4', 'Aisle 5', 'Dairy', 'Frozen'],
+    label: 'Grocery store',
+    match: /$^/,
+    zones: ['Produce', 'Bakery', 'Deli', 'Meat', 'Aisle', 'Dairy', 'Frozen'],
     lookup: '',
   },
 };
+
+export function newStore(name, presetKey) {
+  const key = presetKey || Object.keys(STORE_PRESETS).find((k) => STORE_PRESETS[k].match.test(name)) || 'custom';
+  const { zones, lookup } = STORE_PRESETS[key];
+  return { id: uid(), name: name.trim(), zones: [...zones], lookup };
+}
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 export const normName = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
+// "14" -> "Aisle 14", "g12" -> "G12", "produce" -> "Produce"
+export function formatLoc(s) {
+  const t = s.trim().replace(/\s+/g, ' ');
+  if (/^\d+[a-z]?$/i.test(t)) return `Aisle ${t.toUpperCase()}`;
+  if (/^[a-z]{1,2}\s?\d+$/i.test(t)) return t.replace(/\s/, '').toUpperCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 function blank() {
-  const target = { id: uid(), name: 'Target', ...structuredClone(STORE_PRESETS.target) };
+  const target = newStore('Target');
+  const meijer = newStore('Meijer');
   return {
     notes: [],
     reminders: [],
-    stores: [target],
+    stores: [target, meijer],
     lists: [{ id: uid(), name: 'Groceries', storeId: target.id, items: [] }],
     locations: {}, // storeId -> { normalized item name -> "G12" }
     history: [], // previously added item names, most recent first
@@ -44,6 +74,10 @@ export function load() {
 
 export function save(db) {
   localStorage.setItem(KEY, JSON.stringify(db));
+}
+
+export function wipe() {
+  localStorage.removeItem(KEY); // only this app's data — other apps share this site's storage
 }
 
 export function exportBackup(db) {

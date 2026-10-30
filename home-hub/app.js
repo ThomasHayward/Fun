@@ -1,4 +1,4 @@
-import { load, save, uid, normName, STORE_PRESETS, exportBackup, importBackup } from './data.js';
+import { load, save, uid, normName, formatLoc, newStore, STORE_PRESETS, exportBackup, importBackup, wipe } from './data.js';
 import { planRoute } from './route.js';
 
 let db = load();
@@ -27,12 +27,14 @@ window.addEventListener('hashchange', render);
 
 const byId = (arr, id) => arr.find((x) => x.id === id);
 const storeOf = (list) => byId(db.stores, list.storeId) || db.stores[0];
+// The store an item is bought at: its own pick, else the list's main store.
+const itemStore = (list, item) => byId(db.stores, item.at) || storeOf(list);
 const locOf = (storeId, name) => (db.locations[storeId] || {})[normName(name)] || '';
 
 function setLoc(storeId, name, loc) {
   db.locations[storeId] ??= {};
   const key = normName(name);
-  if (loc.trim()) db.locations[storeId][key] = loc.trim().toUpperCase();
+  if (loc.trim()) db.locations[storeId][key] = formatLoc(loc);
   else delete db.locations[storeId][key];
 }
 
@@ -59,28 +61,48 @@ function viewLists() {
 
 function itemRow(item, store) {
   const loc = locOf(store.id, item.name);
+  const others = db.stores
+    .filter((s) => s.id !== store.id && locOf(s.id, item.name))
+    .map((s) => `${esc(s.name)} ${esc(locOf(s.id, item.name))}`);
+  const picker = db.stores.length > 1
+    ? `<select class="at" data-action="item-at" data-id="${item.id}" title="Store to buy at">${db.stores.map((s) =>
+      `<option value="${s.id}" ${s.id === store.id ? 'selected' : ''}>@ ${esc(s.name)}</option>`).join('')}</select>`
+    : '';
   return `<li class="item ${item.checked ? 'done' : ''}">
     <label class="check"><input type="checkbox" data-action="toggle-item" data-id="${item.id}" ${item.checked ? 'checked' : ''}><span></span></label>
-    <span class="name" data-action="edit-item" data-id="${item.id}">${esc(item.name)}${item.qty ? ` <span class="muted">× ${esc(item.qty)}</span>` : ''}</span>
-    <button class="loc ${loc ? '' : 'empty'}" data-action="set-loc" data-id="${item.id}" title="Set aisle">${loc ? esc(loc) : '+ aisle'}</button>
-    <a class="icon-btn" href="${esc(lookupUrl(store, item.name))}" target="_blank" rel="noopener" title="Look up in ${esc(store.name)}">🔎</a>
+    <span class="name"><span data-action="edit-item" data-id="${item.id}">${esc(item.name)}${item.qty ? ` <span class="muted">× ${esc(item.qty)}</span>` : ''}</span>
+      <span class="sub">${picker}${others.length ? `<span class="muted small">${others.join(' · ')}</span>` : ''}</span></span>
+    <button class="loc ${loc ? '' : 'empty'}" data-action="set-loc" data-id="${item.id}" title="Set aisle at ${esc(store.name)}">${loc ? esc(loc) : '+ aisle'}</button>
+    <a class="icon-btn" href="${esc(lookupUrl(store, item.name))}" target="_blank" rel="noopener" title="Look up at ${esc(store.name)}">🔎</a>
     <button class="icon-btn" data-action="del-item" data-id="${item.id}" title="Remove">✕</button>
   </li>`;
 }
 
+function viewRoute(items, store) {
+  const stops = planRoute(items, (i) => locOf(store.id, i.name), store.zones);
+  return stops.map((s, n) => `<section class="stop">
+      <h3>${s.location ? `<span class="stop-n">${n + 1}</span> ${esc(s.location)}` : '<span>❓ Aisle unknown <span class="muted small block">Tap 🔎 to look it up, then “+ aisle”</span></span>'}</h3>
+      <ul class="items">${s.items.map((i) => itemRow(i, store)).join('')}</ul></section>`).join('');
+}
+
 function viewList(list) {
-  const store = storeOf(list);
+  const main = storeOf(list);
   const todo = list.items.filter((i) => !i.checked);
   const done = list.items.filter((i) => i.checked);
-  const stops = planRoute(todo, (i) => locOf(store.id, i.name), store.zones);
   const total = list.items.length;
   const pct = total ? Math.round((done.length / total) * 100) : 0;
 
-  const route = stops.map((s, n) => `<section class="stop">
-      <h3>${s.location ? `<span class="stop-n">${n + 1}</span> ${esc(s.location.toUpperCase())}` : '<span>❓ Aisle unknown <span class="muted small block">Tap 🔎 to look it up, then “+ aisle”</span></span>'}</h3>
-      <ul class="items">${s.items.map((i) => itemRow(i, store)).join('')}</ul></section>`).join('');
+  // One route per store this trip visits, main store first.
+  const trips = [main, ...db.stores.filter((s) => s !== main)]
+    .map((store) => ({ store, items: todo.filter((i) => itemStore(list, i) === store) }))
+    .filter((t) => t.items.length);
+  const routes = trips.length > 1
+    ? trips.map((t) => `<div class="trip"><h2>🏬 ${esc(t.store.name)} <span class="muted small">${t.items.length} item${t.items.length === 1 ? '' : 's'}</span>
+        <button class="btn ghost small" data-action="open-store" data-id="${t.store.id}">Aisle order</button></h2>
+        ${viewRoute(t.items, t.store)}</div>`).join('')
+    : trips.map((t) => viewRoute(t.items, t.store)).join('');
 
-  const storeOpts = db.stores.map((s) => `<option value="${s.id}" ${s.id === store.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  const storeOpts = db.stores.map((s) => `<option value="${s.id}" ${s.id === main.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
   const suggestions = db.history.slice(0, 200).map((h) => `<option value="${esc(h)}">`).join('');
 
   return `<header class="top">
@@ -89,10 +111,11 @@ function viewList(list) {
       <button class="icon-btn" data-action="del-list" data-id="${list.id}" title="Delete list">🗑</button>
     </header>
     <div class="row">
-      <label class="muted small">Store</label>
+      <label class="muted small">Main store</label>
       <select data-action="list-store" data-id="${list.id}">${storeOpts}</select>
-      <button class="btn ghost small" data-action="open-store" data-id="${store.id}">Aisle order</button>
+      ${trips.length > 1 ? '' : `<button class="btn ghost small" data-action="open-store" data-id="${main.id}">Aisle order</button>`}
     </div>
+    ${db.stores.length > 1 && total && trips.length < 2 ? '<p class="muted small">Getting something elsewhere? Change an item’s “@ store” and the list splits into one route per store.</p>' : ''}
     <form class="add" data-form="add-item">
       <input name="name" list="item-history" placeholder="Add an item…" autocomplete="off" required>
       <input name="qty" placeholder="Qty" class="qty" autocomplete="off">
@@ -100,9 +123,9 @@ function viewList(list) {
       <datalist id="item-history">${suggestions}</datalist>
     </form>
     ${total ? `<div class="progress"><div style="width:${pct}%"></div></div><p class="muted small">${done.length} of ${total} in cart</p>` : ''}
-    ${route || (total ? '<p class="done-msg">🎉 Everything’s in the cart.</p>' : '<p class="muted">Add items above. Once you give an item an aisle, it’s remembered for this store forever.</p>')}
+    ${routes || (total ? '<p class="done-msg">🎉 Everything’s in the cart.</p>' : '<p class="muted">Add items above. Once you give an item an aisle, it’s remembered for that store forever.</p>')}
     ${done.length ? `<section class="stop cart"><h3>🛒 In cart <button class="btn ghost small" data-action="clear-checked">Clear</button></h3>
-      <ul class="items">${done.map((i) => itemRow(i, store)).join('')}</ul></section>` : ''}`;
+      <ul class="items">${done.map((i) => itemRow(i, itemStore(list, i))).join('')}</ul></section>` : ''}`;
 }
 
 function viewStore(store) {
@@ -116,13 +139,14 @@ function viewStore(store) {
       <label>Name <input name="name" value="${esc(store.name)}" required></label>
       <label>Walking order — one zone per line, in the order you walk the store
         <textarea name="zones" rows="10">${esc(store.zones.join('\n'))}</textarea></label>
-      <p class="muted small">Target aisles are a letter + number (e.g. <b>G12</b>). Put the letters in the order you walk past them,
-        and add named spots like “Starbucks” or “Checkout”. Items in the same letter are ordered by number.</p>
+      <p class="muted small">Target and Walmart aisles are a letter + number (e.g. <b>G12</b>): list the letters in the order you walk past them.
+        Meijer uses numbered aisles: type just the number (e.g. <b>14</b>) and it files under the “Aisle” line.
+        Add named spots like “Produce” or “Checkout” anywhere. Within a zone, items are ordered by number.</p>
       <label>Item lookup link (<code>{q}</code> = item name)
         <input name="lookup" value="${esc(store.lookup)}" placeholder="https://www.target.com/s?searchTerm={q}"></label>
       <div class="row">
-        <button type="button" class="btn ghost small" data-action="preset" data-preset="target">Use Target preset</button>
-        <button type="button" class="btn ghost small" data-action="preset" data-preset="custom">Use grocery-store preset</button>
+        <span class="muted small">Reset to preset:</span>
+        ${Object.entries(STORE_PRESETS).map(([k, p]) => `<button type="button" class="btn ghost small" data-action="preset" data-preset="${k}">${p.label}</button>`).join('')}
       </div>
       <button class="btn">Save store</button>
     </form>
@@ -348,8 +372,8 @@ const actions = {
   'set-loc': (el) => {
     const list = currentList();
     const item = list.items.find((i) => i.id === el.dataset.id);
-    const store = storeOf(list);
-    const loc = prompt(`Where is “${item.name}” at ${store.name}?\n(e.g. G12, Produce, Aisle 4 — leave blank to clear)`, locOf(store.id, item.name));
+    const store = itemStore(list, item);
+    const loc = prompt(`Where is “${item.name}” at ${store.name}?\n(e.g. G12, 14, Produce — leave blank to clear)`, locOf(store.id, item.name));
     if (loc === null) return;
     setLoc(store.id, item.name, loc);
     commit();
@@ -361,10 +385,9 @@ const actions = {
   },
 
   'new-store': () => {
-    const name = prompt('Store name (e.g. Target – Main St)');
+    const name = prompt('Store name (e.g. Walmart, or Meijer – Main St)');
     if (!name) return;
-    const preset = /target/i.test(name) ? STORE_PRESETS.target : STORE_PRESETS.custom;
-    const store = { id: uid(), name: name.trim(), ...structuredClone(preset) };
+    const store = newStore(name);
     db.stores.push(store);
     save(db);
     go(`store/${store.id}`);
@@ -420,8 +443,8 @@ const actions = {
 
   'export': () => exportBackup(db),
   'wipe': () => {
-    if (!confirm('Erase all notes, reminders, lists and stores on this device? Export a backup first if unsure.')) return;
-    localStorage.clear();
+    if (!confirm('Erase all Home Hub notes, reminders, lists and stores on this device? Export a backup first if unsure.')) return;
+    wipe();
     db = load();
     go('grocery');
     render();
@@ -443,6 +466,13 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', async (e) => {
   const el = e.target;
   if (el.type === 'checkbox' && el.dataset.action) return actions[el.dataset.action](el);
+  if (el.dataset.action === 'item-at') {
+    const list = currentList();
+    const item = list.items.find((i) => i.id === el.dataset.id);
+    if (el.value === list.storeId) delete item.at;
+    else item.at = el.value;
+    return commit();
+  }
   if (el.dataset.action === 'list-store') {
     byId(db.lists, el.dataset.id).storeId = el.value;
     return commit();
