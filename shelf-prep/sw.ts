@@ -1,36 +1,35 @@
 // Offline cache: serve app files from cache, refresh in the background.
-const CACHE = 'home-hub-v2';
+// Loaded as a classic script (not a module), so no imports/exports here.
+const sw = self as unknown as ServiceWorkerGlobalScope;
+
+const CACHE = 'shelf-prep-v1';
 const FILES = [
-  './', 'index.html', 'styles.css', 'app.js', 'data.js', 'route.js', 'manifest.json',
+  './', 'index.html', 'styles.css', 'manifest.json',
+  'app.js', 'content.js', 'store.js', 'srs.js', 'body.js',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
-self.addEventListener('install', (e) => {
+sw.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)));
-  self.skipWaiting();
+  sw.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
+sw.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
   );
-  self.clients.claim();
+  sw.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
+sw.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(e.request, { ignoreSearch: true });
       const network = fetch(e.request)
         .then((res) => { if (res.ok) cache.put(e.request, res.clone()); return res; })
-        .catch(() => cached);
-      return cached || network;
+        .catch(() => cached ?? Response.error());
+      return cached ?? network;
     })
   );
-});
-
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((cs) => (cs[0] ? cs[0].focus() : self.clients.openWindow('./#reminders'))));
 });

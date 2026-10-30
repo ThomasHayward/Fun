@@ -2,40 +2,52 @@
 A little place for me to test new fun ideas with Claude
 
 Each app lives in its own folder. `index.html` at the root is a launcher page that links to them.
+The web apps are written in TypeScript. `npm run build` compiles them into `dist/`, which is the folder that gets published.
 
 | App | Folder | How it runs |
 | --- | --- | --- |
-| Home Hub | [`home-hub/`](home-hub/) | Static web app (GitHub Pages / any web server) |
+| Shelf Prep | [`shelf-prep/`](shelf-prep/) | TypeScript web app, built into `dist/` and published to GitHub Pages |
 
 Every app has its own README section or file explaining how to run it. A web app can be published with GitHub Pages. A script, bot or server can sit in its own folder with its own run instructions; it just won't be on Pages.
 
+### Developing
+You'll need [Node.js](https://nodejs.org) 22 or newer.
+```
+npm install        # once
+npm run dev        # build, then serve at http://localhost:8000
+npm run typecheck  # check types without building
+```
+
 ### Publishing with GitHub Pages
-1. On GitHub, go to repo **Settings → Pages** and set the source to **Deploy from a branch**, branch `main`, folder `/ (root)`.
-2. The launcher is at `https://<your-username>.github.io/<repo-name>/`, and each app is at `…/<folder>/`, e.g. `…/home-hub/`.
+1. On GitHub, go to repo **Settings → Pages** and set **Source** to **GitHub Actions**.
+2. Every push to `main` runs `.github/workflows/pages.yml`, which builds the site and publishes it.
+3. The launcher is at `https://<your-username>.github.io/<repo-name>/`, and each app is at `…/<folder>/`, e.g. `…/shelf-prep/`.
 
-All apps on Pages share one site, so they also share browser storage. Each app should save under its own key, the way Home Hub uses `homehub.v1`.
+All apps on Pages share one site, so they also share browser storage. Each app should save under its own key, the way Shelf Prep uses `shelfprep.v1`.
 
-## Home Hub
+## Shelf Prep
 
-A personal app for notes, reminders and grocery lists. It works on a PC and on an iPhone as an installable web app. There's no build step: it's plain HTML, CSS and JavaScript.
+Practice for the Internal Medicine shelf exam. It works on a PC and on an iPhone as an installable web app.
 
 ### Features
-- **Groceries**: give an item an aisle once and it's remembered for that store. The list is then sorted into walking order and grouped by aisle.
-  - **Multiple stores**: comes with Target and Meijer, and presets for Target, Meijer, Walmart or a generic grocery store. Each item shows the aisles you've saved at other stores, e.g. "Meijer Aisle 14".
-  - **Split trips**: set any item to "@ Meijer" or "@ Target". The list then becomes one route per store.
-  - **🔎 lookup**: opens the item in the store's site or app so you can find its aisle.
-- **Reminders**: due dates, repeats, alerts while the app is open, and 📅 to add one to your phone's calendar so it alerts even when the app is closed.
-- **Notes**: autosaving notes with search and pinning.
-- **Offline + backup**: works without a connection, and you can export or import a JSON file from Settings to copy your data between devices.
+- **Body map**: tap an organ to study that system. Organs are colored by how well that system's questions are going.
+- **Board-style questions**: clinical vignettes with five choices. Every choice has an explanation, plus a one-line takeaway.
+  - **Tutor mode** shows the answer after each question.
+  - **Timed mode** gives 90 seconds per question, like the shelf, with marking and a review at the end.
+  - You can cross out choices and use keyboard shortcuts on a PC.
+- **Flashcards with spaced repetition**: rate a card Again, Hard, Good or Easy, and it comes back sooner or later accordingly, Anki-style.
+- **Progress**: accuracy by system and topic, your weakest topics, and a "retry missed questions" option.
+- **Library**: edit any question or card, add your own, and import flashcards from Anki or a spreadsheet.
+  - **Flag**: mark anything that looks wrong so you can find it later.
+  - **Backup**: export or import your progress.
 
-Data is stored on each device only. There's no syncing yet.
+### Content
+`shelf-prep/content.ts` holds the starter bank: 36 original questions and 54 flashcards across 9 systems (cardiology, pulmonology, GI, renal, endocrine, heme/onc, ID, rheumatology, neurology).
+- **Accuracy:** the starter bank was written by an AI for practice and can contain mistakes. It's not a substitute for vetted resources like UWorld or the NBME practice exams. Check anything surprising and flag it.
+- **Your edits:** edits made in the app are stored separately, so the original stays available through "Restore original".
 
 ### Run locally
-From the repo root, run:
-```
-python3 -m http.server 8000
-```
-Then open http://localhost:8000/home-hub/.
+Run `npm run dev`, then open http://localhost:8000/shelf-prep/.
 
 ### On your iPhone
-Open the Pages URL for `home-hub/` in **Safari**, tap **Share**, then **Add to Home Screen**.
+Open the Pages URL for `shelf-prep/` in **Safari**, tap **Share**, then **Add to Home Screen**.
